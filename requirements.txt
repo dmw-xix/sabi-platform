@@ -1,0 +1,35 @@
+# Database
+supabase==2.7.4
+psycopg2-binary==2.9.10
+
+# Scraping
+playwright==1.44.0
+beautifulsoup4==4.12.3
+requests==2.32.3
+lxml==5.2.2
+httpx==0.27.0
+
+# Data processing
+pandas==2.2.2
+python-dateutil==2.9.0
+
+# Scheduling / utilities
+schedule==1.2.2
+python-dotenv==1.0.1
+tenacity==8.3.0
+rich==13.7.1
+
+# Logging
+loguru==0.7.2
+
+# YouTube API
+google-api-python-client==2.134.0
+
+# RSS / Press
+feedparser==6.0.11
+
+# NLP
+langdetect==1.0.9
+
+# Testing
+pytest==8.2.0
