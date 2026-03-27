@@ -26,18 +26,13 @@ DELAY_BETWEEN_ARTISTS = 3
 # ── Metric Cleaning ───────────────────────────────────────────────────────────
 
 def parse_number(text: str) -> float | None:
-    """
-    Converts Audiomack number strings to floats.
-    Handles: "1.2M", "45.3K", "1,234", "892"
-    Returns None if unparseable.
-    """
     if not text:
         return None
-
     text = text.strip().replace(",", "")
-
     try:
-        if text.upper().endswith("M"):
+        if text.upper().endswith("B"):
+            return float(text[:-1]) * 1_000_000_000
+        elif text.upper().endswith("M"):
             return float(text[:-1]) * 1_000_000
         elif text.upper().endswith("K"):
             return float(text[:-1]) * 1_000
