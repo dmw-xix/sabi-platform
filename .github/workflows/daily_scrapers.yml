@@ -1,0 +1,131 @@
+name: Sabi Daily Scrapers
+
+on:
+  schedule:
+    # All times in UTC. Nigeria is UTC+1 (WAT)
+    # Shazam + RSS:   08:00 WAT = 07:00 UTC
+    # Audiomack:      10:00 WAT = 09:00 UTC
+    # YouTube:        12:00 WAT = 11:00 UTC
+    - cron: '0 7 * * *'   # Shazam + RSS
+    - cron: '0 9 * * *'   # Audiomack
+    - cron: '0 11 * * *'  # YouTube
+
+  # Manual trigger from GitHub UI
+  workflow_dispatch:
+    inputs:
+      scraper:
+        description: 'Which scraper to run'
+        required: true
+        default: 'all'
+        type: choice
+        options:
+          - all
+          - shazam
+          - audiomack
+          - youtube
+          - rss
+
+env:
+  SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+  SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+  SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+  YOUTUBE_API_KEY: ${{ secrets.YOUTUBE_API_KEY }}
+
+jobs:
+  # ── Job 1: Shazam charts (runs at 07:00 UTC) ──────────────────────────────
+  shazam_charts:
+    name: Shazam Nigeria Charts
+    runs-on: ubuntu-latest
+    if: |
+      github.event_name == 'workflow_dispatch' && 
+      (github.event.inputs.scraper == 'shazam' || github.event.inputs.scraper == 'all') ||
+      (github.event_name == 'schedule' && github.event.schedule == '0 7 * * *')
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+          playwright install chromium
+          playwright install-deps chromium
+
+      - name: Run Shazam scraper
+        run: python scrapers/charts/shazam_scraper.py
+
+  # ── Job 2: RSS press feeds (runs at 07:00 UTC, same time as Shazam) ───────
+  rss_feeds:
+    name: RSS Press Feeds
+    runs-on: ubuntu-latest
+    if: |
+      github.event_name == 'workflow_dispatch' && 
+      (github.event.inputs.scraper == 'rss' || github.event.inputs.scraper == 'all') ||
+      (github.event_name == 'schedule' && github.event.schedule == '0 7 * * *')
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run RSS scraper
+        run: python scrapers/charts/rss_scraper.py
+
+  # ── Job 3: Audiomack (runs at 09:00 UTC) ──────────────────────────────────
+  audiomack_snapshots:
+    name: Audiomack Artist Snapshots
+    runs-on: ubuntu-latest
+    if: |
+      github.event_name == 'workflow_dispatch' && 
+      (github.event.inputs.scraper == 'audiomack' || github.event.inputs.scraper == 'all') ||
+      (github.event_name == 'schedule' && github.event.schedule == '0 9 * * *')
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+          playwright install chromium
+          playwright install-deps chromium
+
+      - name: Run Audiomack scraper
+        run: python scrapers/streaming/audiomack_scraper.py
+
+  # ── Job 4: YouTube (runs at 11:00 UTC) ────────────────────────────────────
+  youtube_snapshots:
+    name: YouTube Artist Snapshots
+    runs-on: ubuntu-latest
+    if: |
+      github.event_name == 'workflow_dispatch' && 
+      (github.event.inputs.scraper == 'youtube' || github.event.inputs.scraper == 'all') ||
+      (github.event_name == 'schedule' && github.event.schedule == '0 11 * * *')
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run YouTube scraper
+        run: python scrapers/streaming/youtube_scraper.py
