@@ -17,7 +17,7 @@ env:
 jobs:
   shazam_charts:
     name: Shazam Nigeria Charts
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -48,7 +48,7 @@ jobs:
 
   audiomack_snapshots:
     name: Audiomack Artist Snapshots
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
