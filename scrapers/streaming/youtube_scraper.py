@@ -3,6 +3,8 @@
 # Uses YouTube Data API v3 — free, 10,000 units/day quota
 # Cost per run: ~3 units per artist (1 search + 1 channel + 1 videos)
 
+import re
+import html
 import time
 from datetime import date, datetime
 from loguru import logger
@@ -224,8 +226,9 @@ def save_artist_youtube_metrics(
             continue
 
         try:
-            import re
-            title = video["title"]
+            import html
+            title = html.unescape(video.get("title", ""))
+
             title_slug = re.sub(r'[^a-z0-9]+', '-', title.lower()).strip('-')
             track_slug = f"{title_slug}-yt"[:100]
 

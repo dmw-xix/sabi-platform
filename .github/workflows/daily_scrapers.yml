@@ -76,3 +76,68 @@ jobs:
         run: pip install -r requirements.txt
       - name: Run YouTube scraper
         run: python scrapers/streaming/youtube_scraper.py
+
+          turntable_charts:
+    name: TurnTable Nigeria Charts
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+          playwright install chromium
+          playwright install-deps chromium
+      - name: Run TurnTable scraper
+        run: python scrapers/charts/turntable_scraper.py
+
+        kworb_charts:
+    name: Kworb Multi-Platform Charts
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+      - name: Run Kworb charts scraper
+        run: python scrapers/streaming/kworb_scraper.py
+
+  kworb_artist_global:
+    name: Kworb Artist Global Presence
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+      - name: Run Kworb artist scraper
+        run: python scrapers/streaming/kworb_artist_scraper.py
+
+  breakout_detector:
+    name: Breakout Detection Engine
+    runs-on: ubuntu-latest
+    needs:
+      - shazam_charts
+      - kworb_charts
+      - audiomack_snapshots
+      - youtube_snapshots
+      - rss_feeds
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+      - name: Run breakout detector
+        run: python intelligence/trend_velocity/breakout_detector.py
