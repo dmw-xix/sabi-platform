@@ -2,9 +2,10 @@ name: Sabi Daily Scrapers
 
 on:
   schedule:
-    - cron: '0 7 * * *'
-    - cron: '0 9 * * *'
-    - cron: '0 11 * * *'
+    - cron: '0 7 * * *'    # Shazam + RSS + Kworb + TurnTable
+    - cron: '0 9 * * *'    # Audiomack
+    - cron: '0 11 * * *'   # YouTube + Kworb Artist
+    - cron: '0 13 * * *'   # Breakout detector (after all data is fresh)
   workflow_dispatch:
 
 env:
