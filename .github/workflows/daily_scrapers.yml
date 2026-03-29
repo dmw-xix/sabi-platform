@@ -2,10 +2,10 @@ name: Sabi Daily Scrapers
 
 on:
   schedule:
-    - cron: '0 7 * * *'    # Shazam + RSS + Kworb + TurnTable
-    - cron: '0 9 * * *'    # Audiomack
-    - cron: '0 11 * * *'   # YouTube + Kworb Artist
-    - cron: '0 13 * * *'   # Breakout detector (after all data is fresh)
+    - cron: '0 7 * * *'
+    - cron: '0 9 * * *'
+    - cron: '0 11 * * *'
+    - cron: '0 13 * * *'
   workflow_dispatch:
 
 env:
@@ -47,6 +47,37 @@ jobs:
       - name: Run RSS scraper
         run: python scrapers/charts/rss_scraper.py
 
+  kworb_charts:
+    name: Kworb Multi-Platform Charts
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+      - name: Run Kworb charts scraper
+        run: python scrapers/streaming/kworb_scraper.py
+
+  turntable_charts:
+    name: TurnTable Nigeria Charts
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+          playwright install chromium
+          playwright install-deps chromium
+      - name: Run TurnTable scraper
+        run: python scrapers/charts/turntable_scraper.py
+
   audiomack_snapshots:
     name: Audiomack Artist Snapshots
     runs-on: ubuntu-22.04
@@ -77,37 +108,6 @@ jobs:
         run: pip install -r requirements.txt
       - name: Run YouTube scraper
         run: python scrapers/streaming/youtube_scraper.py
-
-          turntable_charts:
-    name: TurnTable Nigeria Charts
-    runs-on: ubuntu-22.04
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
-          cache: 'pip'
-      - name: Install dependencies
-        run: |
-          pip install -r requirements.txt
-          playwright install chromium
-          playwright install-deps chromium
-      - name: Run TurnTable scraper
-        run: python scrapers/charts/turntable_scraper.py
-
-        kworb_charts:
-    name: Kworb Multi-Platform Charts
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
-          cache: 'pip'
-      - name: Install dependencies
-        run: pip install -r requirements.txt
-      - name: Run Kworb charts scraper
-        run: python scrapers/streaming/kworb_scraper.py
 
   kworb_artist_global:
     name: Kworb Artist Global Presence
