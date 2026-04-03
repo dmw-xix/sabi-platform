@@ -55,8 +55,8 @@ def scrape_artist_profile(page, artist_slug: str) -> dict | None:
     logger.info(f"  Scraping profile: {url}")
 
     try:
-        page.goto(url, wait_until="networkidle", timeout=45000)
-        time.sleep(3)
+        page.goto(url, wait_until="domcontentloaded", timeout=90000)
+        time.sleep(6)
 
         # Check page loaded correctly — look for artist name
         page_text = page.inner_text("body")
@@ -177,8 +177,8 @@ def scrape_artist_top_tracks(page, artist_slug: str) -> list[dict]:
     logger.info(f"  Scraping top tracks: {url}")
 
     try:
-        page.goto(url, wait_until="networkidle", timeout=45000)
-        time.sleep(3)
+        page.goto(url, wait_until="domcontentloaded", timeout=90000)
+        time.sleep(6)  # was 3
 
         # Click Top Tracks tab
         for selector in [
@@ -364,8 +364,8 @@ def scrape_track_page(page, track_url: str) -> dict:
     So we look for the label then check the line BEFORE it.
     """
     try:
-        page.goto(track_url, wait_until="networkidle", timeout=30000)
-        time.sleep(2)
+        page.goto(track_url, wait_until="domcontentloaded", timeout=60000)
+        time.sleep(3)  # was 2
 
         # Check we actually landed on a track page (not 404)
         page_text = page.inner_text("body")
@@ -507,8 +507,8 @@ def scrape_track_detail(page, track_url: str) -> dict | None:
     logger.debug(f"  Scraping track detail: {track_url}")
 
     try:
-        page.goto(track_url, wait_until="networkidle", timeout=30000)
-        time.sleep(2)
+        page.goto(track_url, wait_until="domcontentloaded", timeout=60000)
+        time.sleep(3)  # was 2
 
         page_text = page.inner_text("body")
         lines = [l.strip() for l in page_text.split('\n') if l.strip()]

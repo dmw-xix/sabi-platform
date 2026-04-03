@@ -142,3 +142,19 @@ jobs:
         run: pip install -r requirements.txt
       - name: Run breakout detector
         run: python intelligence/trend_velocity/breakout_detector.py
+  
+  health_scores:
+    name: Artist Health Scores
+    runs-on: ubuntu-latest
+    needs:
+      - breakout_detector
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+      - name: Run health score calculator
+        run: python intelligence/health_score/calculator.py
