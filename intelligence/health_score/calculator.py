@@ -11,13 +11,37 @@ SCRAPER_NAME = "artist_health_score"
 TODAY = str(date.today())
 
 # Scoring weights — must sum to 100
-WEIGHTS = {
-    "streaming":    30,  # Spotify streams + Audiomack plays
-    "charts":       20,  # Chart positions across all platforms
-    "social":       15,  # YouTube + press mentions
-    "momentum":     20,  # Week-over-week growth
-    "global":       15,  # Countries charting on Kworb
+WEIGHTS_BY_TIER = {
+    1: {  # Major artists — global reach and chart dominance
+        "streaming": 25,
+        "charts": 20,
+        "social": 15,
+        "momentum": 20,
+        "global": 20,
+    },
+    2: {  # Mid-level — chart presence + growth
+        "streaming": 30,
+        "charts": 25,
+        "social": 15,
+        "momentum": 25,
+        "global": 5,
+    },
+    3: {  # Emerging — momentum is everything
+        "streaming": 25,
+        "charts": 20,
+        "social": 10,
+        "momentum": 40,
+        "global": 5,
+    },
+    4: {  # Underground — week-over-week velocity only signal
+        "streaming": 20,
+        "charts": 15,
+        "social": 5,
+        "momentum": 55,
+        "global": 5,
+    },
 }
+
 
 
 def get_streaming_score(db, artist_id: str, artist_name: str) -> float:
@@ -228,16 +252,180 @@ def get_global_score(db, artist_id: str) -> float:
 
     return 0
 
+# In intelligence/health_score/calculator.py
+def calculate_velocity(
+    current_value: float,
+    previous_value: float,
+    days_between: int = 7
+    ) -> float:
+    """
+    Calculates normalized velocity score.
+    Returns daily percentage growth rate.
+    """
+    if not previous_value or previous_value == 0:
+        return 0.0
+    total_growth = (current_value - previous_value) / previous_value
+    daily_rate = total_growth / days_between
+    return round(daily_rate * 100, 4)  # As percentage per day
 
-def calculate_health_score(
-    db, artist: dict
-) -> dict | None:
+import numpy as np
+from scipy import stats
+
+def cross_platform_consistency(
+    db, artist_name: str, days: int = 14
+) -> float:
     """
-    Calculates composite Artist Health Score.
-    Returns score dict or None if insufficient data.
+    Measures how consistently an artist performs across platforms.
+    High score = reliable commercial performer (good for brands).
+    Low score = platform-specific appeal (niche or promotional gaming).
+    Returns Pearson correlation coefficient 0-1.
     """
+    platforms = [
+        "spotify_ng_daily",
+        "shazam_ng_top200",
+        "apple_music_ng",
+        "turntable_ng_top100",
+    ]
+
+    platform_positions = {}
+    cutoff = str(date.today() - timedelta(days=days))
+
+    for platform in platforms:
+        result = db.table("chart_positions").select(
+            "position, chart_date"
+        ).eq("raw_artist", artist_name).eq(
+            "chart_name", platform
+        ).gte("chart_date", cutoff).execute()
+
+        if result.data:
+            # Average position on this platform
+            avg_pos = sum(r["position"] for r in result.data) / len(result.data)
+            platform_positions[platform] = avg_pos
+
+    if len(platform_positions) < 2:
+        return 0.0
+
+    # Consistency score: lower variance = higher score
+    positions = list(platform_positions.values())
+    # Normalize positions (lower is better, so invert)
+    normalized = [1 / p for p in positions]
+    
+    if len(normalized) > 1:
+        variance = np.var(normalized)
+        consistency = 1 / (1 + variance * 10)
+        return round(float(consistency), 3)
+    return 0.0
+
+def leading_indicator_score(db, artist_id: str, artist_name: str) -> float:
+    """
+    Scores an artist on leading indicators that precede mainstream breakout.
+    Based on the observed Nigerian music breakout sequence:
+    Google Trends spike → Shazam entry → Spotify surge → TurnTable → Press
+    
+    Higher score = closer to breakout.
+    """
+    score = 0.0
+    
+    # Signal 1: Google Trends momentum (leads by ~7-14 days)
+    trends = get_latest_metric(db, artist_id, "google_trends", "google_trends_momentum")
+    if trends and trends > 20:  # >20% week-over-week trends growth
+        score += 25
+    elif trends and trends > 5:
+        score += 10
+    
+    # Signal 2: Shazam entry / position improvement (leads by ~5-10 days)
+    recent_shazam = db.table("chart_positions").select(
+        "position"
+    ).eq("raw_artist", artist_name).eq(
+        "chart_name", "shazam_ng_top200"
+    ).gte("chart_date", str(date.today() - timedelta(days=7))).execute()
+    
+    if recent_shazam.data:
+        best_shazam = min(r["position"] for r in recent_shazam.data)
+        if best_shazam <= 50:
+            score += 25
+        elif best_shazam <= 100:
+            score += 15
+        else:
+            score += 5
+    
+    # Signal 3: Audiomack velocity (concurrent with breakout)
+    am_listeners = get_latest_metric(
+        db, artist_id, "audiomack", "monthly_listeners"
+    )
+    am_momentum = get_momentum_score(db, artist_id, artist_name)
+    if am_momentum > 70:
+        score += 25
+    elif am_momentum > 55:
+        score += 15
+    
+    # Signal 4: Spotify stream acceleration (streams_change positive)
+    stream_changes = db.table("chart_positions").select(
+        "streams_change"
+    ).eq("raw_artist", artist_name).eq(
+        "chart_name", "spotify_ng_daily"
+    ).gte("chart_date", str(date.today() - timedelta(days=3))).execute()
+    
+    if stream_changes.data:
+        avg_change = sum(
+            r["streams_change"] for r in stream_changes.data 
+            if r.get("streams_change") and r["streams_change"] > 0
+        ) / max(1, len(stream_changes.data))
+        if avg_change > 50000:
+            score += 25
+        elif avg_change > 10000:
+            score += 15
+    
+    return min(100, score)
+
+def authenticity_score(db, artist_id: str) -> float:
+    """
+    Detects suspicious metric ratios that suggest artificial inflation.
+    Returns 0-100 where 100 = highly authentic.
+    """
+    followers = get_latest_metric(
+        db, artist_id, "audiomack", "followers"
+    )
+    monthly = get_latest_metric(
+        db, artist_id, "audiomack", "monthly_listeners"
+    )
+    total_plays = get_latest_metric(
+        db, artist_id, "audiomack", "total_plays"
+    )
+
+    if not followers or followers == 0:
+        return 50.0  # Unknown
+
+    score = 100.0
+
+    # Check 1: Monthly listeners should be 3-30% of followers for healthy account
+    if monthly:
+        listener_ratio = monthly / followers
+        if listener_ratio < 0.01:  # Less than 1% — very suspicious
+            score -= 40
+        elif listener_ratio < 0.03:
+            score -= 20
+        elif listener_ratio > 0.5:  # More listeners than followers — unusual
+            score -= 10
+
+    # Check 2: Total plays should scale with followers
+    if total_plays:
+        plays_per_follower = total_plays / followers
+        if plays_per_follower < 5:  # Very low engagement on uploads
+            score -= 20
+        elif plays_per_follower > 1000:  # Unusually high — check
+            score -= 10
+
+    return max(0, min(100, score))
+
+
+
+
+def calculate_health_score(db, artist: dict) -> dict | None:
     artist_id = artist["id"]
     artist_name = artist["name"]
+    tier = artist.get("tier", 2)
+    weights = WEIGHTS_BY_TIER.get(tier, WEIGHTS_BY_TIER[2])
 
     try:
         streaming = get_streaming_score(db, artist_id, artist_name)
@@ -246,13 +434,12 @@ def calculate_health_score(
         momentum = get_momentum_score(db, artist_id, artist_name)
         global_reach = get_global_score(db, artist_id)
 
-        # Weighted composite
         composite = (
-            streaming * WEIGHTS["streaming"] / 100 +
-            charts * WEIGHTS["charts"] / 100 +
-            social * WEIGHTS["social"] / 100 +
-            momentum * WEIGHTS["momentum"] / 100 +
-            global_reach * WEIGHTS["global"] / 100
+            streaming * weights["streaming"] / 100 +
+            charts * weights["charts"] / 100 +
+            social * weights["social"] / 100 +
+            momentum * weights["momentum"] / 100 +
+            global_reach * weights["global"] / 100
         )
 
         return {
@@ -260,20 +447,20 @@ def calculate_health_score(
             "score": round(composite, 2),
             "streaming_score": round(streaming, 2),
             "social_score": round(social, 2),
-            "youtube_score": round(global_reach, 2),
-            "momentum_score": round(momentum, 2),
             "radio_score": round(charts, 2),
+            "momentum_score": round(momentum, 2),
+            "youtube_score": round(global_reach, 2),
             "component_data": {
                 "streaming": streaming,
                 "charts": charts,
                 "social": social,
                 "momentum": momentum,
                 "global_reach": global_reach,
-                "weights": WEIGHTS,
+                "weights_used": weights,
+                "tier": tier,
             },
-            "score_date": TODAY,
+            "score_date": str(date.today()),
         }
-
     except Exception as e:
         logger.error(f"Score calculation failed for {artist_name}: {e}")
         return None
