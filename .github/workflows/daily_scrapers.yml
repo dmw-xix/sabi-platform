@@ -159,8 +159,7 @@ jobs:
       - name: Run health score calculator
         run: python intelligence/health_score/calculator.py
         
-
-milestone_tracker:
+  milestone_tracker:
     name: Artist Milestone Tracker
     runs-on: ubuntu-latest
     needs:
@@ -176,6 +175,8 @@ milestone_tracker:
       - name: Run milestone tracker
         run: python intelligence/milestones/milestone_tracker.py
 
+                
+                
   audiomack_discovery:
     name: Audiomack Artist Discovery
     runs-on: ubuntu-22.04
