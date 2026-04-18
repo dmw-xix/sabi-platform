@@ -193,3 +193,20 @@ jobs:
           playwright install-deps chromium
       - name: Run discovery scraper
         run: python scrapers/streaming/audiomack_discovery.py
+
+  shazam_predictor:
+    name: Shazam Peak Predictor
+    runs-on: ubuntu-latest
+    needs:
+      - google_trends
+      - audiomack_snapshots
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+      - name: Run predictor
+        run: python intelligence/predictions/shazam_peak_predictor.py
