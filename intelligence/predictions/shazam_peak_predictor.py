@@ -298,57 +298,55 @@ def predict_shazam_peak(
 
 
 def save_prediction(db, prediction: dict) -> bool:
-    """
-    Save prediction to artist_snapshots as a special metric.
-    Also saves to a dedicated predictions store in signal_data.
-    """
     try:
-        # Save predicted position as a metric
+        # Clamp confidence to 0-1 range before saving
+        confidence = max(0.0, min(1.0, float(prediction["confidence"])))
+        predicted_pos = int(prediction["predicted_peak_position"])
+
+        # Save predicted position
         db.table("artist_snapshots").upsert({
             "artist_id": prediction["artist_id"],
             "source": "prediction_model",
             "metric_name": "shazam_predicted_position",
-            "metric_value": prediction["predicted_peak_position"],
+            "metric_value": float(predicted_pos),
             "metric_text": (
-                f"Predicted Shazam peak: #{prediction['predicted_peak_position']} "
+                f"Predicted Shazam peak: #{predicted_pos} "
                 f"around {prediction['predicted_peak_date']} "
-                f"(confidence: {prediction['confidence']:.0%})"
+                f"(confidence: {confidence:.0%})"
             ),
             "snapshot_date": str(TODAY),
             "captured_at": datetime.now().isoformat(),
         }, on_conflict="artist_id,source,metric_name,snapshot_date").execute()
 
-        # Save confidence score
+        # Save confidence as percentage (0-100) to avoid decimal precision issues
         db.table("artist_snapshots").upsert({
             "artist_id": prediction["artist_id"],
             "source": "prediction_model",
             "metric_name": "shazam_prediction_confidence",
-            "metric_value": prediction["confidence"],
+            "metric_value": round(confidence * 100, 1),  # Store as 0-100
             "snapshot_date": str(TODAY),
             "captured_at": datetime.now().isoformat(),
         }, on_conflict="artist_id,source,metric_name,snapshot_date").execute()
 
-        # Log as a breakout signal if position is top 50
-        if prediction["predicted_peak_position"] <= 50:
+        # Log breakout signal if top 50 predicted
+        if predicted_pos <= 50:
             db.table("breakout_signals").insert({
                 "artist_id": prediction["artist_id"],
                 "signal_type": "shazam_peak_predicted",
-                "strength": min(
-                    100,
-                    prediction["confidence"] * 100
-                    + (50 - prediction["predicted_peak_position"])
-                ),
+                "strength": min(100.0, round(
+                    confidence * 100 + max(0, 50 - predicted_pos), 1
+                )),
                 "sources": ["google_trends", "audiomack"],
                 "signal_data": {
-                    "predicted_position": prediction["predicted_peak_position"],
+                    "predicted_position": predicted_pos,
                     "predicted_date": prediction["predicted_peak_date"],
-                    "confidence": prediction["confidence"],
+                    "confidence": confidence,
                     "model": prediction["best_model"],
                     "summary": (
                         f"Model predicts Shazam peak at "
-                        f"#{prediction['predicted_peak_position']} "
-                        f"around {prediction['predicted_peak_date']} "
-                        f"with {prediction['confidence']:.0%} confidence."
+                        f"#{predicted_pos} around "
+                        f"{prediction['predicted_peak_date']} "
+                        f"with {confidence:.0%} confidence."
                     ),
                 },
                 "detected_at": datetime.now().isoformat(),

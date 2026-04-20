@@ -198,8 +198,8 @@ jobs:
     name: Shazam Peak Predictor
     runs-on: ubuntu-latest
     needs:
-      - google_trends
-      - audiomack_snapshots
+      - kworb_charts          # has spotify stream data
+      - audiomack_snapshots   # has velocity data
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5

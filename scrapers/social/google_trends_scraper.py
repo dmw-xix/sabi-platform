@@ -1,17 +1,16 @@
 # scrapers/social/google_trends_scraper.py
 import time
-import re
 from datetime import date, datetime, timedelta
 from loguru import logger
-from pytrends.request import TrendReq
-from pytrends.exceptions import TooManyRequestsError
 from database.client import get_supabase, log_scraper_run
+import pandas as pd
+pd.set_option('future.no_silent_downcasting', True)
 
 SCRAPER_NAME = "google_trends_ng"
 SOURCE = "google_trends"
 TODAY = str(date.today())
 BATCH_SIZE = 5
-BATCH_DELAY = 20
+BATCH_DELAY = 25
 
 
 def get_artists(db) -> list[dict]:
@@ -21,29 +20,85 @@ def get_artists(db) -> list[dict]:
     return result.data
 
 
+def build_pytrends():
+    """
+    Build TrendReq with urllib3 compatibility handling.
+    Handles both old and new urllib3 versions.
+    """
+    from pytrends.request import TrendReq
+    import requests
+    from requests.adapters import HTTPAdapter
+
+    try:
+        # Try new urllib3 v2.x style first
+        from urllib3.util.retry import Retry
+        retry = Retry(
+            total=3,
+            backoff_factor=1.0,
+            allowed_methods=["GET", "POST"],
+        )
+    except TypeError:
+        # Fall back to old urllib3 v1.x style
+        from urllib3.util.retry import Retry
+        retry = Retry(
+            total=3,
+            backoff_factor=1.0,
+            method_whitelist=["GET", "POST"],
+        )
+
+    # Build TrendReq with conservative settings
+    pytrends = TrendReq(
+        hl="en-US",
+        tz=60,        # WAT = UTC+1
+        timeout=(15, 30),
+        retries=2,
+        backoff_factor=0.8,
+    )
+    return pytrends
+
+
 def fetch_trends_batch(pytrends, artists: list[dict]) -> dict:
+    """
+    Fetch Google Trends data for a batch of up to 5 artists.
+    Returns {artist_slug: metrics_dict}
+    """
     keywords = [a["name"] for a in artists]
     slug_map = {a["name"]: a for a in artists}
     results = {}
 
     try:
-        # Current week
+        # Current 7-day window
         pytrends.build_payload(
-            keywords, geo="NG",
-            timeframe="now 7-d", cat=35
+        keywords,
+        geo="NG",
+        timeframe="today 7-d",   # changed from "now 7-d"
+    # cat=35 removed — causes 400 errors
         )
         current_df = pytrends.interest_over_time()
-        time.sleep(3)
-
-        # Previous week for momentum
-        pytrends.build_payload(
-            keywords, geo="NG",
-            timeframe="now 14-d", cat=35
-        )
-        historical_df = pytrends.interest_over_time()
+        time.sleep(4)
 
         if current_df.empty:
+            logger.warning(
+                f"  No data returned for: {keywords}"
+            )
             return {}
+
+        # Previous 7-day window for momentum calculation
+        week_ago_end = date.today() - timedelta(days=7)
+        week_ago_start = week_ago_end - timedelta(days=7)
+        timeframe_prev = (
+            f"{week_ago_start.strftime('%Y-%m-%d')} "
+            f"{week_ago_end.strftime('%Y-%m-%d')}"
+        )
+
+        pytrends.build_payload(
+        keywords,
+        geo="NG",
+        timeframe="today 14-d",  # simpler format
+    # cat=35 removed — causes 400 errors
+        )
+        prev_df = pytrends.interest_over_time()
+        time.sleep(4)
 
         for name in keywords:
             if name not in current_df.columns:
@@ -53,14 +108,12 @@ def fetch_trends_batch(pytrends, artists: list[dict]) -> dict:
             current_avg = float(current_df[name].mean())
             current_peak = float(current_df[name].max())
 
-            # Momentum: compare first half vs second half of 14-day window
+            # Momentum: current week vs previous week
             momentum = 0.0
-            if not historical_df.empty and name in historical_df.columns:
-                midpoint = len(historical_df) // 2
-                first_half = float(historical_df[name].iloc[:midpoint].mean())
-                second_half = float(historical_df[name].iloc[midpoint:].mean())
-                if first_half > 0:
-                    momentum = ((second_half - first_half) / first_half) * 100
+            if not prev_df.empty and name in prev_df.columns:
+                prev_avg = float(prev_df[name].mean())
+                if prev_avg > 0:
+                    momentum = ((current_avg - prev_avg) / prev_avg) * 100
 
             results[artist["slug"]] = {
                 "artist_id": artist["id"],
@@ -76,12 +129,10 @@ def fetch_trends_batch(pytrends, artists: list[dict]) -> dict:
                 f"momentum={momentum:+.1f}%"
             )
 
-    except TooManyRequestsError:
-        logger.warning("Rate limited — waiting 90s...")
-        time.sleep(90)
-        return fetch_trends_batch(pytrends, artists)
     except Exception as e:
-        logger.error(f"Trends error: {e}")
+        logger.error(f"  Trends batch error: {e}")
+        import traceback
+        logger.debug(traceback.format_exc())
 
     return results
 
@@ -105,7 +156,7 @@ def save_trends(db, results: dict) -> int:
                 }, on_conflict="artist_id,source,metric_name,snapshot_date").execute()
                 saved += 1
             except Exception as e:
-                logger.error(f"DB error {slug}/{metric_name}: {e}")
+                logger.error(f"  DB error {slug}/{metric_name}: {e}")
     return saved
 
 
@@ -115,17 +166,18 @@ def run():
     status = "failed"
     records_inserted = 0
     error_message = None
+    artists = []
 
     try:
         db = get_supabase()
         artists = get_artists(db)
 
-        pytrends = TrendReq(
-            hl="en-US", tz=60,
-            timeout=(10, 30), retries=3,
-            backoff_factor=1.0,
-        )
+        if not artists:
+            logger.warning("No artists found")
+            return
 
+        logger.info(f"Fetching trends for {len(artists)} artists")
+        pytrends = build_pytrends()
         all_results = {}
 
         for i in range(0, len(artists), BATCH_SIZE):
@@ -138,22 +190,24 @@ def run():
             all_results.update(results)
 
             if i + BATCH_SIZE < len(artists):
+                logger.debug(f"  Waiting {BATCH_DELAY}s...")
                 time.sleep(BATCH_DELAY)
 
         records_inserted = save_trends(db, all_results)
 
-        # Leaderboard by momentum — most interesting signal
-        sorted_by_momentum = sorted(
-            all_results.items(),
-            key=lambda x: x[1]["momentum_pct"],
-            reverse=True
-        )
-        logger.info("--- Trending UP this week ---")
-        for slug, d in sorted_by_momentum[:5]:
-            logger.info(
-                f"  {slug}: {d['avg_interest']:.0f}/100 "
-                f"({d['momentum_pct']:+.1f}% momentum)"
+        # Show momentum leaderboard
+        if all_results:
+            sorted_momentum = sorted(
+                all_results.items(),
+                key=lambda x: x[1]["momentum_pct"],
+                reverse=True
             )
+            logger.info("--- Trending UP in Nigeria ---")
+            for slug, d in sorted_momentum[:5]:
+                logger.info(
+                    f"  {slug}: {d['avg_interest']:.0f}/100 "
+                    f"({d['momentum_pct']:+.1f}% week-over-week)"
+                )
 
         status = "success"
         logger.success(f"Saved {records_inserted} trend metrics")
@@ -161,13 +215,18 @@ def run():
     except Exception as e:
         error_message = str(e)
         logger.error(f"Crashed: {e}")
+        import traceback
+        logger.debug(traceback.format_exc())
     finally:
         duration = (datetime.now() - start_time).total_seconds()
         log_scraper_run(
-            scraper_name=SCRAPER_NAME, status=status,
-            records_attempted=len(artists) if 'artists' in locals() else 0,
-            records_inserted=records_inserted, records_failed=0,
-            error_message=error_message, duration_seconds=duration
+            scraper_name=SCRAPER_NAME,
+            status=status,
+            records_attempted=len(artists),
+            records_inserted=records_inserted,
+            records_failed=0,
+            error_message=error_message,
+            duration_seconds=duration,
         )
         logger.info(f"Done. {status}. {duration:.1f}s")
 

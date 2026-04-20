@@ -21,6 +21,7 @@ RSS_FEEDS = {
     "linda_ikeji":      "https://www.lindaikejisblog.com/feeds/",
     "bellanaija_music": "https://www.bellanaija.com/feed/",
     "vanguard_ent":    "https://www.vanguardngr.com/category/entertainment/feed/",
+    "instablog9ja":    "https://instablog9ja.com/feed/",
 }
 
 HEADERS = {
