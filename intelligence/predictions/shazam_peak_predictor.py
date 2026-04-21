@@ -299,9 +299,10 @@ def predict_shazam_peak(
 
 def save_prediction(db, prediction: dict) -> bool:
     try:
-        # Clamp confidence to 0-1 range before saving
         confidence = max(0.0, min(1.0, float(prediction["confidence"])))
-        predicted_pos = int(prediction["predicted_peak_position"])
+        predicted_pos = int(max(1, min(200, prediction["predicted_peak_position"])))
+        # Store confidence as 0-100 percentage
+        confidence_pct = round(confidence * 100, 2)
 
         # Save predicted position
         db.table("artist_snapshots").upsert({
@@ -312,51 +313,59 @@ def save_prediction(db, prediction: dict) -> bool:
             "metric_text": (
                 f"Predicted Shazam peak: #{predicted_pos} "
                 f"around {prediction['predicted_peak_date']} "
-                f"(confidence: {confidence:.0%})"
+                f"(confidence: {confidence_pct:.0f}%)"
             ),
             "snapshot_date": str(TODAY),
             "captured_at": datetime.now().isoformat(),
         }, on_conflict="artist_id,source,metric_name,snapshot_date").execute()
 
-        # Save confidence as percentage (0-100) to avoid decimal precision issues
+        # Save confidence percentage
         db.table("artist_snapshots").upsert({
             "artist_id": prediction["artist_id"],
             "source": "prediction_model",
             "metric_name": "shazam_prediction_confidence",
-            "metric_value": round(confidence * 100, 1),  # Store as 0-100
+            "metric_value": confidence_pct,
             "snapshot_date": str(TODAY),
             "captured_at": datetime.now().isoformat(),
         }, on_conflict="artist_id,source,metric_name,snapshot_date").execute()
 
-        # Log breakout signal if top 50 predicted
-        if predicted_pos <= 50:
+        # Log breakout signal only if top 50 and high confidence
+        if predicted_pos <= 50 and confidence >= 0.5:
+            strength = float(min(100.0, round(
+                confidence_pct * 0.7 + max(0, 50 - predicted_pos) * 0.6, 2
+            )))
             db.table("breakout_signals").insert({
                 "artist_id": prediction["artist_id"],
                 "signal_type": "shazam_peak_predicted",
-                "strength": min(100.0, round(
-                    confidence * 100 + max(0, 50 - predicted_pos), 1
-                )),
-                "sources": ["google_trends", "audiomack"],
+                "strength": strength,
+                "sources": ["audiomack", "google_trends"],
                 "signal_data": {
                     "predicted_position": predicted_pos,
                     "predicted_date": prediction["predicted_peak_date"],
-                    "confidence": confidence,
+                    "confidence_pct": confidence_pct,
                     "model": prediction["best_model"],
+                    "data_points": prediction.get("data_points", {}),
                     "summary": (
                         f"Model predicts Shazam peak at "
                         f"#{predicted_pos} around "
                         f"{prediction['predicted_peak_date']} "
-                        f"with {confidence:.0%} confidence."
+                        f"({confidence_pct:.0f}% confidence)."
                     ),
                 },
                 "detected_at": datetime.now().isoformat(),
                 "status": "active",
             }).execute()
 
+        logger.debug(
+            f"  Saved: pos={predicted_pos}, "
+            f"confidence={confidence_pct:.1f}%"
+        )
         return True
 
     except Exception as e:
         logger.error(f"  Save prediction error: {e}")
+        import traceback
+        logger.debug(traceback.format_exc())
         return False
 
 

@@ -33,6 +33,8 @@ RSS_FEEDS = {
     "notjustok": "https://www.notjustok.com/feed/",
     "okay_africa": "https://www.okayafrica.com/feed/",
     "vanguard_ent": "https://www.vanguardngr.com/entertainment/feed/",
+    "instablog9ja": "https://instablog9ja.com/feed/",
+
 }
 
 # ── Logging ───────────────────────────────────────
@@ -48,3 +50,5 @@ def validate_config():
 if __name__ == "__main__":
     validate_config()
     print("✓ Config valid")
+
+GOOGLE_TRENDS_COOKIE = os.getenv("GOOGLE_TRENDS_COOKIE", "")

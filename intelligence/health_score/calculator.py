@@ -269,7 +269,9 @@ def calculate_velocity(
     return round(daily_rate * 100, 4)  # As percentage per day
 
 import numpy as np
-from scipy import stats
+def pearsonr(x, y):
+    x, y = np.array(x), np.array(y)
+    return np.corrcoef(x, y)[0, 1]
 
 def cross_platform_consistency(
     db, artist_name: str, days: int = 14
