@@ -31,7 +31,7 @@ def get_trends_history(
         "metric_value, snapshot_date"
     ).eq("artist_id", artist_id).eq(
         "source", "google_trends"
-    ).eq("metric_name", "google_trends_avg").gte(
+    ).eq("metric_name", "google_trends_score").gte(
         "snapshot_date", cutoff
     ).order("snapshot_date").execute()
 

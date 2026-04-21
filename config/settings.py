@@ -51,4 +51,3 @@ if __name__ == "__main__":
     validate_config()
     print("✓ Config valid")
 
-GOOGLE_TRENDS_COOKIE = os.getenv("GOOGLE_TRENDS_COOKIE", "")

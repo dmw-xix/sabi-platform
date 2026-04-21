@@ -210,3 +210,20 @@ jobs:
         run: pip install -r requirements.txt
       - name: Run predictor
         run: python intelligence/predictions/shazam_peak_predictor.py
+
+  google_trends:
+    name: Google Trends Nigeria
+    runs-on: ubuntu-22.04        # Changed — needs Playwright
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+          playwright install chromium
+          playwright install-deps chromium
+      - name: Run Google Trends scraper
+        run: python scrapers/social/google_trends_scraper.py
