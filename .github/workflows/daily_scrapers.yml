@@ -6,6 +6,8 @@ on:
     - cron: '0 9 * * *'
     - cron: '0 11 * * *'
     - cron: '0 13 * * *'
+    - cron: '0 14 * * 0'  # Every Sunday 14:00 UTC = 15:00 WAT
+    - cron: '0 15 * * *'
   workflow_dispatch:
 
 env:
@@ -227,3 +229,33 @@ jobs:
           playwright install-deps chromium
       - name: Run Google Trends scraper
         run: python scrapers/social/google_trends_scraper.py
+
+  tier_calculator:
+    name: Artist Tier Calculator
+    runs-on: ubuntu-latest
+    needs:
+      - health_scores
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+      - name: Run tier calculator
+        run: python intelligence/health_score/tier_calculator.py
+
+  twitter_trends:
+    name: X Twitter Trends Nigeria
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+      - name: Run Twitter trends scraper
+        run: python scrapers/social/twitter_trends_scraper.py
